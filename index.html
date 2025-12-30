@@ -100,6 +100,27 @@
         .controls p {
             font-size: 14px;
         }
+        #startBtn {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 24px;
+            background: #00aa00;
+            border: none;
+            border-radius: 5px;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 16px;
+            z-index: 100;
+        }
+        #startBtn:hover {
+            background: #00cc00;
+        }
+        #startBtn:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -109,8 +130,9 @@
             <input type="text" id="modelUrl" placeholder="Paste GLB model URL" />
             <button id="loadBtn">Load</button>
         </div>
-        <div class="status" id="status">Ready to load a model</div>
+        <div class="status" id="status">Click 'Start AR' button to begin</div>
     </div>
+    <button id="startBtn">Start AR</button>
     <div class="controls" id="controls" style="display: none;">
         <p>Point at surfaces to place the model</p>
     </div>
@@ -125,6 +147,7 @@
         const loadBtn = document.getElementById('loadBtn');
         const statusDiv = document.getElementById('status');
         const controlsDiv = document.getElementById('controls');
+        const startBtn = document.getElementById('startBtn');
 
         function setStatus(message, type = 'normal') {
             statusDiv.textContent = message;
@@ -134,17 +157,19 @@
         async function initXR() {
             try {
                 setStatus('Initializing AR...', 'loading');
+                startBtn.disabled = true;
                 
                 // Check for WebXR support
                 if (!navigator.xr) {
                     setStatus('WebXR not supported on this device', 'error');
+                    startBtn.disabled = false;
                     return;
                 }
 
-                // Request AR session
+                // Request AR session with camera and hit-test
                 xrSession = await navigator.xr.requestSession('immersive-ar', {
-                    requiredFeatures: ['hit-test'],
-                    optionalFeatures: ['dom-overlay'],
+                    requiredFeatures: ['hit-test', 'dom-overlay'],
+                    optionalFeatures: ['camera-access'],
                     domOverlay: { root: document.body }
                 });
 
@@ -194,6 +219,8 @@
 
                 xrSession.requestHitTestSource(hitTestOptionsInitiator).then(source => {
                     hitTestSource = source;
+                }).catch(err => {
+                    console.warn('Hit test source not available:', err);
                 });
 
                 // Setup render loop
@@ -201,11 +228,13 @@
                 
                 setStatus('AR Ready - Load a model', 'success');
                 controlsDiv.style.display = 'block';
+                startBtn.style.display = 'none';
                 gltfLoader = new THREE.GLTFLoader();
 
             } catch (err) {
                 setStatus('AR Error: ' + err.message, 'error');
                 console.error('XR Error:', err);
+                startBtn.disabled = false;
             }
         }
 
@@ -281,30 +310,9 @@
             }
         });
 
-        // Initialize on page load
-        window.addEventListener('load', () => {
-            // Add a start button for better UX
-            const startBtn = document.createElement('button');
-            startBtn.textContent = 'Start AR';
-            startBtn.style.cssText = `
-                position: absolute;
-                bottom: 20px;
-                right: 20px;
-                padding: 12px 24px;
-                background: #00aa00;
-                border: none;
-                border-radius: 5px;
-                color: white;
-                font-weight: bold;
-                cursor: pointer;
-                font-size: 16px;
-                z-index: 100;
-            `;
-            startBtn.addEventListener('click', async () => {
-                startBtn.style.display = 'none';
-                await initXR();
-            });
-            document.body.appendChild(startBtn);
+        // Start AR button
+        startBtn.addEventListener('click', async () => {
+            await initXR();
         });
     </script>
 </body>
