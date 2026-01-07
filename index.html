@@ -383,9 +383,10 @@
             });
 
             // Touch events for pinch-to-scale and rotate
-            renderer.domElement.addEventListener('touchstart', onTouchStart, { passive: false });
-            renderer.domElement.addEventListener('touchmove', onTouchMove, { passive: false });
-            renderer.domElement.addEventListener('touchend', onTouchEnd);
+            // IMPORTANT: Use document.body, not canvas - WebXR takes over canvas input
+            document.body.addEventListener('touchstart', onTouchStart, { passive: false });
+            document.body.addEventListener('touchmove', onTouchMove, { passive: false });
+            document.body.addEventListener('touchend', onTouchEnd);
 
             // Start animation loop
             renderer.setAnimationLoop(render);
@@ -494,6 +495,10 @@
 
         // Touch gesture handlers for pinch-to-scale and rotate
         function onTouchStart(e) {
+            // Only handle in edit mode with an active session
+            if (currentMode !== 'edit') return;
+            if (!renderer.xr.isPresenting) return;
+
             if (e.touches.length === 2 && selectedModel) {
                 e.preventDefault();
                 pinching = true;
@@ -507,11 +512,12 @@
                 startScale = selectedModel.scale.x;
                 lastRotAngle = Math.atan2(dy, dx);
 
-                addDebug('Pinch started', 'ok');
+                addDebug('Pinch started (scale: ' + startScale.toFixed(2) + ')', 'ok');
             }
         }
 
         function onTouchMove(e) {
+            if (currentMode !== 'edit') return;
             if (!pinching || e.touches.length !== 2 || !selectedModel) return;
             e.preventDefault();
             e.stopPropagation();
