@@ -176,6 +176,16 @@
                 // Setup XR hit test
                 const hitTestOptionsInitiator = {
                     space: xrRefSpace
+                                    // Add lighting to make the model visible
+                const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
+                scene.add(light);
+                
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                directionalLight.position.set(5, 10, 5);
+                scene.add(directionalLight);
+                
+                scene.background = new THREE.Color(0x000000);
+                
                 };
 
                 xrSession.requestReferenceSpace('viewer').then(referenceSpace => {
@@ -232,9 +242,9 @@
                 const pose = frame.getViewerPose(xrRefSpace);
 
                 if (pose) {
-                    // Update scene based on viewer pose
-                    renderer.setSize(window.innerWidth, window.innerHeight);
-                    renderer.render(scene, pose.views[0].camera);
+                // XR rendering is handled automatically by Three.js XR system
+                // The renderer.xr.render() is called internally when using XR
+                // We just need to ensure the scene is updated with the correct pose
                 }
 
                 // Handle hit test for model placement
@@ -254,12 +264,13 @@
                         model.visible = false;
                     }
                 }
+                // For WebXR with Three.js, rendering is handled automatically
+                // when renderer.xr.enabled = true and renderer.xr.setSession() is called.
+                // The scene updates occur in the pose/model positioning code above.
+                // Three.js XR will call renderer.render() internally with the correct cameras
+                
 
                 // Render frame
-                const glLayer = session.renderState.baseLayer;
-                renderer.setSize(glLayer.framebufferWidth, glLayer.framebufferHeight);
-                renderer.render(scene, pose ? pose.views[0].camera : camera);
-
             } catch (err) {
                 console.error('Frame error:', err);
             } finally {
