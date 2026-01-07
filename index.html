@@ -36,45 +36,16 @@
             font-size: 20px;
             margin-bottom: 15px;
         }
-        .input-group {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
-        }
-        .input-group input {
-            flex: 1;
-            padding: 10px;
-            border: 1px solid #444;
-            border-radius: 5px;
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
+        .ui-container p {
             font-size: 14px;
-        }
-        .input-group input::placeholder {
-            color: #999;
-        }
-        .input-group button {
-            padding: 10px 20px;
-            background: #007bff;
-            border: none;
-            border-radius: 5px;
-            color: white;
-            cursor: pointer;
-            font-weight: bold;
-            transition: background 0.3s;
-        }
-        .input-group button:hover {
-            background: #0056b3;
-        }
-        .input-group button:disabled {
-            background: #666;
-            cursor: not-allowed;
+            margin-bottom: 10px;
+            line-height: 1.5;
         }
         .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
             font-size: 12px;
-            color: #aaa;
-            margin-top: 10px;
-            line-height: 1.5;
         }
         .status.loading {
             color: #ffaa00;
@@ -93,61 +64,69 @@
             background: rgba(0, 0, 0, 0.8);
             padding: 15px 25px;
             border-radius: 10px;
-            color: white;
-            text-align: center;
             backdrop-filter: blur(10px);
-        }
-        .controls p {
-            font-size: 14px;
+            z-index: 100;
+            color: white;
         }
         #startBtn {
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            padding: 12px 24px;
-            background: #00aa00;
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             border: none;
-            border-radius: 5px;
             color: white;
-            font-weight: bold;
+            border-radius: 5px;
             cursor: pointer;
-            font-size: 16px;
-            z-index: 100;
+            font-size: 14px;
+            transition: transform 0.2s;
         }
         #startBtn:hover {
-            background: #00cc00;
+            transform: scale(1.05);
         }
         #startBtn:disabled {
-            background: #666;
+            opacity: 0.5;
             cursor: not-allowed;
+        }
+        #modelUrlInput {
+            padding: 8px 12px;
+            border: 1px solid #444;
+            background: #222;
+            color: #fff;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            width: 100%;
+            font-size: 12px;
+        }
+        #modelUrlInput::placeholder {
+            color: #666;
         }
     </style>
 </head>
 <body>
+    <canvas id="canvas"></canvas>
     <div class="ui-container">
-        <h1>WebXR Model Viewer</h1>
-        <div class="input-group">
-            <input type="text" id="modelUrl" placeholder="Paste GLB model URL" />
-            <button id="loadBtn">Load</button>
-        </div>
-        <div class="status" id="status">Click 'Start AR' button to begin</div>
+        <h1>WebXR GLB Viewer</h1>
+        <p>Click START to enter AR and place your model.</p>
+        <input type="text" id="modelUrlInput" placeholder="Enter GLB model URL">
+        <div id="status" class="status"></div>
     </div>
-    <button id="startBtn">Start AR</button>
-    <div class="controls" id="controls" style="display: none;">
-        <p>Point at surfaces to place the model</p>
+    <div class="controls">
+        <button id="startBtn">Start AR</button>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@r128/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 
     <script>
-        let scene, camera, renderer, xrSession, xrRefSpace, hitTestSource, hitTestSourceRequested = false;
-        let reticle, model, gltfLoader;
-        const modelUrl = document.getElementById('modelUrl');
-        const loadBtn = document.getElementById('loadBtn');
-        const statusDiv = document.getElementById('status');
-        const controlsDiv = document.getElementById('controls');
-        const startBtn = document.getElementById('startBtn');
+        // Global variables
+        let scene, camera, renderer, xrSession, xrRefSpace, hitTestSource;
+        let model = null;
+        let statusDiv, modelUrlInput, startBtn;
+        
+        // Loop optimization variables
+        let isFramePending = false;
+        let lastFrameTime = 0;
+        const TARGET_FRAME_TIME = 1000 / 60; // 60 FPS target
+        let sessionActive = false;
+        let hitTestOptionsInitiator = null;
 
         function setStatus(message, type = 'normal') {
             statusDiv.textContent = message;
@@ -158,10 +137,10 @@
             try {
                 setStatus('Initializing AR...', 'loading');
                 startBtn.disabled = true;
-                
-                // Check for WebXR support
+
+                // Check for webXR support
                 if (!navigator.xr) {
-                    setStatus('WebXR not supported on this device', 'error');
+                    setStatus('webXR not supported on this device', 'error');
                     startBtn.disabled = false;
                     return;
                 }
@@ -169,14 +148,13 @@
                 // Request AR session with camera and hit-test
                 xrSession = await navigator.xr.requestSession('immersive-ar', {
                     requiredFeatures: ['hit-test', 'dom-overlay'],
-                    optionalFeatures: ['camera-access'],
                     domOverlay: { root: document.body }
                 });
 
-                xrRefSpace = await xrSession.requestReferenceSpace('viewer');
-                
-                // Create WebGL context compatible with XR
-                const canvas = document.createElement('canvas');
+                sessionActive = true;
+
+                // Create webGL context compatible with XR
+                const canvas = document.getElementById('canvas');
                 const glContext = canvas.getContext('webgl2', {
                     xrCompatible: true,
                     alpha: true
@@ -188,34 +166,21 @@
                     antialias: true,
                     alpha: true
                 });
+
+                renderer.setSize(window.innerWidth, window.innerHeight);
                 renderer.xr.enabled = true;
                 renderer.xr.setSession(xrSession);
-                document.body.appendChild(canvas);
 
-                // Setup scene
                 scene = new THREE.Scene();
-                
-                // Add lighting
-                const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
-                scene.add(light);
-
-                // Create reticle (hit test indicator)
-                const reticleGeometry = new THREE.RingGeometry(0.15, 0.2, 32);
-                const reticleMaterial = new THREE.MeshStandardMaterial({
-                    color: 0xffffff,
-                    emissive: 0x00ff00,
-                    emissiveIntensity: 0.5
-                });
-                reticle = new THREE.Mesh(reticleGeometry, reticleMaterial);
-                reticle.rotation.x = -Math.PI / 2;
-                reticle.visible = false;
-                reticle.matrixAutoUpdate = false;
-                scene.add(reticle);
 
                 // Setup XR hit test
                 const hitTestOptionsInitiator = {
                     space: xrRefSpace
                 };
+
+                xrSession.requestReferenceSpace('viewer').then(referenceSpace => {
+                    xrRefSpace = referenceSpace;
+                });
 
                 xrSession.requestHitTestSource(hitTestOptionsInitiator).then(source => {
                     hitTestSource = source;
@@ -225,94 +190,148 @@
 
                 // Setup render loop
                 xrSession.requestAnimationFrame(onXRFrame);
-                
+
                 setStatus('AR Ready - Load a model', 'success');
                 controlsDiv.style.display = 'block';
                 startBtn.style.display = 'none';
-                gltfLoader = new THREE.GLTFLoader();
 
-            } catch (err) {
-                setStatus('AR Error: ' + err.message, 'error');
-                console.error('XR Error:', err);
+                // Handle session end
+                xrSession.addEventListener('end', () => {
+                    sessionActive = false;
+                    isFramePending = false;
+                    console.log('XR Session ended');
+                    startBtn.style.display = 'block';
+                    controlsDiv.style.display = 'none';
+                });
+
+            } catch (error) {
+                setStatus('AR Error: ' + error.message, 'error');
+                console.error('XR Error:', error);
                 startBtn.disabled = false;
             }
         }
 
         function onXRFrame(time, frame) {
-            const session = frame.session;
-            
-            if (hitTestSource && xrRefSpace) {
-                const hitTestResults = frame.getHitTestResults(hitTestSource);
-                
-                if (hitTestResults.length > 0) {
-                    const hit = hitTestResults[0];
-                    const pose = hit.getPose(xrRefSpace);
-                    
-                    if (pose) {
-                        reticle.visible = true;
-                        reticle.matrix.fromArray(pose.transform.matrix);
-                    }
-                } else {
-                    reticle.visible = false;
-                }
-            }
-
-            const glLayer = session.renderState.baseLayer;
-            renderer.setSize(glLayer.framebufferWidth, glLayer.framebufferHeight);
-            renderer.render(scene, camera);
-            session.requestAnimationFrame(onXRFrame);
-        }
-
-        loadBtn.addEventListener('click', async () => {
-            const url = modelUrl.value.trim();
-            
-            if (!url) {
-                setStatus('Please enter a GLB model URL', 'error');
+            // Prevent multiple concurrent frames - THIS FIXES THE LOOP ISSUE
+            if (isFramePending || !sessionActive) {
                 return;
             }
 
-            if (!xrSession) {
-                setStatus('Please start AR first', 'error');
+            // Throttle frame rate to prevent excessive CPU usage
+            const deltaTime = time - lastFrameTime;
+            if (deltaTime < TARGET_FRAME_TIME * 0.8) {
+                frame.session.requestAnimationFrame(onXRFrame);
                 return;
             }
+
+            isFramePending = true;
+            lastFrameTime = time;
 
             try {
-                setStatus('Loading model...', 'loading');
-                
-                gltfLoader.load(
-                    url,
-                    (gltf) => {
-                        // Remove old model if exists
-                        if (model) {
-                            scene.remove(model);
+                const session = frame.session;
+                const pose = frame.getViewerPose(xrRefSpace);
+
+                if (pose) {
+                    // Update scene based on viewer pose
+                    renderer.setSize(window.innerWidth, window.innerHeight);
+                    renderer.render(scene, pose.views[0].camera);
+                }
+
+                // Handle hit test for model placement
+                if (hitTestSource) {
+                    const hitTestResults = frame.getHitTestResults(hitTestSource);
+
+                    if (hitTestResults.length > 0) {
+                        const hit = hitTestResults[0];
+                        const pose = hit.getPose(xrRefSpace);
+
+                        if (pose && model) {
+                            model.visible = true;
+                            model.matrix.fromArray(pose.transform.matrix);
+                            model.matrixAutoUpdate = false;
                         }
-
-                        model = gltf.scene;
-                        model.position.y = 0;
-                        model.scale.set(0.5, 0.5, 0.5);
-                        
-                        // Add to scene
-                        scene.add(model);
-                        
-                        setStatus('Model loaded! Click on surfaces to place it', 'success');
-                    },
-                    (progress) => {
-                        const percent = Math.round((progress.loaded / progress.total) * 100);
-                        setStatus(`Loading: ${percent}%`, 'loading');
-                    },
-                    (error) => {
-                        console.error('Load error:', error);
-                        setStatus('Error loading model: ' + error.message, 'error');
+                    } else if (model) {
+                        model.visible = false;
                     }
-                );
-            } catch (err) {
-                setStatus('Error: ' + err.message, 'error');
-            }
-        });
+                }
 
-        // Start AR button
-        startBtn.addEventListener('click', async () => {
-            await initXR();
+                // Render frame
+                const glLayer = session.renderState.baseLayer;
+                renderer.setSize(glLayer.framebufferWidth, glLayer.framebufferHeight);
+                renderer.render(scene, pose ? pose.views[0].camera : camera);
+
+            } catch (err) {
+                console.error('Frame error:', err);
+            } finally {
+                // Reset flag and request next frame - THIS PREVENTS THE LOOP
+                isFramePending = false;
+                if (sessionActive) {
+                    frame.session.requestAnimationFrame(onXRFrame);
+                }
+            }
+        }
+
+        function loadModel(url) {
+            if (!url.trim()) {
+                setStatus('Please enter a valid model URL', 'error');
+                return;
+            }
+
+            setStatus('Loading model...', 'loading');
+
+            const loader = new THREE.GLTFLoader();
+
+            loader.load(
+                url,
+                (gltf) => {
+                    if (model) {
+                        scene.remove(model);
+                    }
+
+                    model = gltf.scene;
+                    model.position.y = 0;
+                    model.scale.set(0.5, 0.5, 0.5);
+
+                    // Add to scene
+                    scene.add(model);
+
+                    setStatus('Model loaded! Click on surfaces to place it', 'success');
+                },
+                (progress) => {
+                    const percent = Math.round((progress.loaded / progress.total) * 100);
+                    setStatus(`Loading: ${percent}%`, 'loading');
+                },
+                (error) => {
+                    setStatus('Error loading model: ' + error.message, 'error');
+                    console.error('Load error:', error);
+                }
+            );
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            statusDiv = document.getElementById('status');
+            modelUrlInput = document.getElementById('modelUrlInput');
+            startBtn = document.getElementById('startBtn');
+            controlsDiv = document.querySelector('.controls');
+
+            startBtn.addEventListener('click', async () => {
+                await initXR();
+            });
+
+            // Load model when URL input changes
+            let loadTimeout;
+            modelUrlInput.addEventListener('input', (e) => {
+                clearTimeout(loadTimeout);
+                loadTimeout = setTimeout(() => {
+                    if (sessionActive && e.target.value.trim()) {
+                        loadModel(e.target.value);
+                    }
+                }, 500);
+            });
+
+            // Set default status
+            setStatus('Click START to begin AR experience', 'normal');
         });
     </script>
 </body>
