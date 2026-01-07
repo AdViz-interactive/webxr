@@ -165,6 +165,30 @@
         #gesture-hint.visible {
             opacity: 1;
         }
+
+        #mode-indicator {
+            position: fixed;
+            top: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(79, 70, 229, 0.9);
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            pointer-events: none;
+            z-index: 150;
+            display: none;
+        }
+
+        #mode-indicator.edit {
+            background: rgba(234, 88, 12, 0.9);
+        }
+
+        .btn-pill.active {
+            background: rgba(79, 70, 229, 0.9);
+            border-color: rgba(79, 70, 229, 1);
+        }
     </style>
 </head>
 
@@ -185,10 +209,13 @@
         </div>
 
         <div id="ar-controls">
-            <button id="clearBtn" class="btn-pill">Clear</button>
-            <button id="exitBtn" class="btn-pill">Exit AR</button>
+            <button id="modeBtn" class="btn-pill">📍 Place</button>
+            <button id="clearBtn" class="btn-pill">🗑️ Clear</button>
+            <button id="exitBtn" class="btn-pill">✕ Exit</button>
         </div>
     </div>
+
+    <div id="mode-indicator">MODE: PLACE</div>
 
     <div id="gesture-hint">Pinch to scale • Two-finger rotate</div>
     <div id="debug-panel"></div>
@@ -217,7 +244,13 @@
         let startScale = 1;
         let pinching = false;
         let lastRotAngle = 0;
+
+        // Mode: 'place' or 'edit'
+        let currentMode = 'place';
+
         const elGestureHint = document.getElementById('gesture-hint');
+        const elModeIndicator = document.getElementById('mode-indicator');
+        const elModeBtn = document.getElementById('modeBtn');
 
         const elSetup = document.getElementById('setup-panel');
         const elStatus = document.getElementById('status-msg');
@@ -317,7 +350,29 @@
             document.getElementById('clearBtn').addEventListener('click', () => {
                 placedModels.forEach(m => scene.remove(m));
                 placedModels = [];
+                selectedModel = null;
+                elGestureHint.classList.remove('visible');
                 addDebug('Scene cleared', 'ok');
+            });
+
+            // Mode toggle button
+            elModeBtn.addEventListener('click', () => {
+                if (currentMode === 'place') {
+                    currentMode = 'edit';
+                    elModeBtn.textContent = '✏️ Edit';
+                    elModeBtn.classList.add('active');
+                    elModeIndicator.textContent = 'MODE: EDIT (Pinch to scale)';
+                    elModeIndicator.classList.add('edit');
+                    reticle.visible = false;
+                    addDebug('Switched to EDIT mode', 'ok');
+                } else {
+                    currentMode = 'place';
+                    elModeBtn.textContent = '📍 Place';
+                    elModeBtn.classList.remove('active');
+                    elModeIndicator.textContent = 'MODE: PLACE';
+                    elModeIndicator.classList.remove('edit');
+                    addDebug('Switched to PLACE mode', 'ok');
+                }
             });
 
             // Window resize
@@ -370,9 +425,10 @@
                     return;
                 }
 
-                // Show AR controls
+                // Show AR controls and mode indicator
                 if (elArControls.style.display !== 'flex') {
                     elArControls.style.display = 'flex';
+                    elModeIndicator.style.display = 'block';
                     addDebug('AR session active', 'ok');
                 }
 
@@ -389,8 +445,8 @@
                     });
                 }
 
-                // Update reticle
-                if (hitTestSource && refSpace) {
+                // Update reticle ONLY in place mode
+                if (hitTestSource && refSpace && currentMode === 'place') {
                     const results = frame.getHitTestResults(hitTestSource);
                     if (results.length > 0) {
                         const pose = results[0].getPose(refSpace);
@@ -399,6 +455,8 @@
                     } else {
                         reticle.visible = false;
                     }
+                } else if (currentMode === 'edit') {
+                    reticle.visible = false;
                 }
 
                 // Handle tap to place
@@ -417,7 +475,10 @@
         }
 
         function placeModel() {
+            // Only place in place mode
+            if (currentMode !== 'place') return;
             if (!modelTemplate || !reticle.visible) return;
+
             const clone = modelTemplate.clone();
             clone.position.setFromMatrixPosition(reticle.matrix);
             clone.quaternion.setFromRotationMatrix(reticle.matrix);
@@ -428,7 +489,7 @@
             selectedModel = clone;
             elGestureHint.classList.add('visible');
 
-            addDebug('Model placed! Pinch to scale', 'ok');
+            addDebug('Model placed! Switch to Edit to scale', 'ok');
         }
 
         // Touch gesture handlers for pinch-to-scale and rotate
@@ -492,10 +553,17 @@
             addDebug('Session ended', 'ok');
             elSetup.style.display = 'block';
             elArControls.style.display = 'none';
+            elModeIndicator.style.display = 'none';
             elGestureHint.classList.remove('visible');
             hitTestSource = null;
             hitTestSourceRequested = false;
             selectedModel = null;
+
+            // Reset mode
+            currentMode = 'place';
+            elModeBtn.textContent = '📍 Place';
+            elModeBtn.classList.remove('active');
+            elModeIndicator.classList.remove('edit');
         });
     </script>
 </body>
