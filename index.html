@@ -146,6 +146,25 @@
         .debug-error {
             color: #ff0000;
         }
+
+        #gesture-hint {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 12px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 150;
+        }
+
+        #gesture-hint.visible {
+            opacity: 1;
+        }
     </style>
 </head>
 
@@ -171,6 +190,7 @@
         </div>
     </div>
 
+    <div id="gesture-hint">Pinch to scale • Two-finger rotate</div>
     <div id="debug-panel"></div>
 
     <script type="importmap">
@@ -190,6 +210,14 @@
         let scene, camera, renderer, reticle, modelTemplate;
         let hitTestSource = null;
         let placedModels = [];
+
+        // Gesture variables for pinch-to-scale and rotate
+        let selectedModel = null;
+        let touchDist0 = 0;
+        let startScale = 1;
+        let pinching = false;
+        let lastRotAngle = 0;
+        const elGestureHint = document.getElementById('gesture-hint');
 
         const elSetup = document.getElementById('setup-panel');
         const elStatus = document.getElementById('status-msg');
@@ -299,6 +327,11 @@
                 renderer.setSize(innerWidth, innerHeight);
             });
 
+            // Touch events for pinch-to-scale and rotate
+            renderer.domElement.addEventListener('touchstart', onTouchStart, { passive: false });
+            renderer.domElement.addEventListener('touchmove', onTouchMove, { passive: false });
+            renderer.domElement.addEventListener('touchend', onTouchEnd);
+
             // Start animation loop
             renderer.setAnimationLoop(render);
             addDebug('✓ Init complete', 'ok');
@@ -390,7 +423,63 @@
             clone.quaternion.setFromRotationMatrix(reticle.matrix);
             scene.add(clone);
             placedModels.push(clone);
-            addDebug('Model placed!', 'ok');
+
+            // Select this model for gestures
+            selectedModel = clone;
+            elGestureHint.classList.add('visible');
+
+            addDebug('Model placed! Pinch to scale', 'ok');
+        }
+
+        // Touch gesture handlers for pinch-to-scale and rotate
+        function onTouchStart(e) {
+            if (e.touches.length === 2 && selectedModel) {
+                e.preventDefault();
+                pinching = true;
+
+                const p0 = e.touches[0];
+                const p1 = e.touches[1];
+                const dx = p0.clientX - p1.clientX;
+                const dy = p0.clientY - p1.clientY;
+
+                touchDist0 = Math.hypot(dx, dy);
+                startScale = selectedModel.scale.x;
+                lastRotAngle = Math.atan2(dy, dx);
+
+                addDebug('Pinch started', 'ok');
+            }
+        }
+
+        function onTouchMove(e) {
+            if (!pinching || e.touches.length !== 2 || !selectedModel) return;
+            e.preventDefault();
+            e.stopPropagation();
+
+            const p0 = e.touches[0];
+            const p1 = e.touches[1];
+            const dx = p0.clientX - p1.clientX;
+            const dy = p0.clientY - p1.clientY;
+
+            // Scale
+            const currentDist = Math.hypot(dx, dy);
+            const scaleRatio = currentDist / touchDist0;
+            const newScale = Math.max(0.1, Math.min(startScale * scaleRatio, 5));
+            selectedModel.scale.setScalar(newScale);
+
+            // Rotate (around Y axis)
+            const currentAngle = Math.atan2(dy, dx);
+            const rotDelta = currentAngle - lastRotAngle;
+            selectedModel.rotateY(rotDelta);
+            lastRotAngle = currentAngle;
+        }
+
+        function onTouchEnd(e) {
+            if (e.touches.length < 2) {
+                if (pinching) {
+                    addDebug('Scale: ' + (selectedModel?.scale.x || 1).toFixed(2) + 'x', 'ok');
+                }
+                pinching = false;
+            }
         }
 
         // Use 'select' event for tap placement
@@ -403,8 +492,10 @@
             addDebug('Session ended', 'ok');
             elSetup.style.display = 'block';
             elArControls.style.display = 'none';
+            elGestureHint.classList.remove('visible');
             hitTestSource = null;
             hitTestSourceRequested = false;
+            selectedModel = null;
         });
     </script>
 </body>
