@@ -291,6 +291,7 @@
     <script type="module">
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { ARButton } from 'three/addons/webxr/ARButton.js';
 
         let scene, camera, renderer, xrSession, hitTestSource, xrRefSpace;
         let modelTemplate = null;
@@ -357,60 +358,49 @@
             }
             addDebug('✓ AR supported', 'ok');
 
-            startBtn.addEventListener('click', startAR);
-            document.getElementById('exitBtn').addEventListener('click', () => xrSession?.end());
-            document.getElementById('clearBtn').addEventListener('click', clearAll);
+            // Setup scene and renderer FIRST (before AR button)
+            setupScene();
+
+            // Create AR button using Three.js helper (like video-ar.html)
+            const arButton = ARButton.createButton(renderer, {
+                requiredFeatures: ['hit-test'],
+                optionalFeatures: ['dom-overlay'],
+                domOverlay: { root: document.getElementById('ar-overlay') }
+            });
+
+            // Style the AR button
+            arButton.style.position = 'static';
+            arButton.style.marginTop = '16px';
+
+            // Replace our start button with AR button
+            startBtn.replaceWith(arButton);
+
+            // Listen for session start
+            renderer.xr.addEventListener('sessionstart', async () => {
+                addDebug('✓ AR session started', 'ok');
+                document.body.style.backgroundColor = 'transparent';
+                document.body.style.background = 'none';
+                mainUI.style.display = 'none';
+                document.getElementById('ar-overlay').style.display = 'block';
+                arUI.style.display = 'flex';
+
+                const url = modelInput.value.trim();
+                if (url) {
+                    await loadModel(url);
+                }
+
+                xrSession = renderer.xr.getSession();
+                xrSession.addEventListener('select', onSelect);
+                addDebug('✓ AR ready!', 'ok');
+            });
+
+            renderer.xr.addEventListener('sessionend', onSessionEnd);
 
             setStatus('Ready to launch.', 'info');
             addDebug('✓ Init complete', 'ok');
         }
 
-        async function startAR() {
-            const url = modelInput.value.trim();
-            if (!url) {
-                setStatus('Please enter a valid URL.', 'error');
-                return;
-            }
-
-            try {
-                setStatus('Initializing...', 'info');
-                addDebug('📱 Requesting AR session...', 'ok');
-
-                // CRITICAL FIX: Make body transparent BEFORE requesting session
-                document.body.style.backgroundColor = 'transparent';
-                document.body.style.background = 'none';
-
-                xrSession = await navigator.xr.requestSession('immersive-ar', {
-                    requiredFeatures: ['hit-test', 'dom-overlay'],
-                    domOverlay: { root: document.getElementById('ar-overlay') }
-                });
-
-                addDebug('✓ AR session created', 'ok');
-                console.log('AR session started successfully');
-                addDebug('AR overlay active', 'ok');
-
-                setupScene();
-                addDebug('Loading model...', 'ok');
-                await loadModel(url);
-
-                mainUI.style.opacity = '0';
-                setTimeout(() => { mainUI.style.display = 'none'; }, 300);
-                document.getElementById('ar-overlay').style.display = 'block';
-                arUI.style.display = 'flex';
-
-                xrSession.addEventListener('end', onSessionEnd);
-                xrSession.addEventListener('select', onSelect);
-
-                addDebug('✓ AR ready!', 'ok');
-                console.log('AR setup complete, camera should be visible now');
-
-            } catch (e) {
-                console.error('AR Start Error:', e);
-                showToast('Start failed: ' + e.message);
-                setStatus('Ready', 'info');
-            }
-        }
-
+        // setupScene is now called in init(), before ARButton
         function setupScene() {
             addDebug('🎬 Setting up scene...', 'ok');
             console.log('Setting up Three.js scene for AR...');
@@ -454,15 +444,7 @@
             scene.add(reticle);
             addDebug('Reticle added', 'ok');
 
-            renderer.xr.setSession(xrSession);
-            addDebug('✓ XR session set on renderer', 'ok');
-
-            // Get reference space for later use
-            xrSession.requestReferenceSpace('local').then(space => {
-                xrRefSpace = space;
-                addDebug('✓ Reference space ready', 'ok');
-            });
-
+            // ARButton will handle xr.setSession automatically
             renderer.setAnimationLoop(render);
             addDebug('✓ Animation loop started', 'ok');
         }
@@ -538,12 +520,15 @@
                 hitTestSource = null;
             }
             hitTestSourceRequested = false;
+            xrRefSpaceRequested = false;
+            xrRefSpace = null;
             xrSession = null;
-            setStatus('Active', 'info');
+            setStatus('Session ended', 'info');
         }
 
         let renderCount = 0;
         let hitTestSourceRequested = false;
+        let xrRefSpaceRequested = false;
 
         function render(timestamp, frame) {
             renderCount++;
@@ -554,11 +539,24 @@
                 addDebug(`60 frames rendered OK`, 'ok');
             }
 
-            if (frame && xrRefSpace) {
+            if (frame) {
                 const session = renderer.xr.getSession();
+                if (!session) {
+                    renderer.render(scene, camera);
+                    return;
+                }
+
+                // Get reference space dynamically if not available
+                if (!xrRefSpace && !xrRefSpaceRequested) {
+                    xrRefSpaceRequested = true;
+                    session.requestReferenceSpace('local').then(space => {
+                        xrRefSpace = space;
+                        addDebug('✓ Reference space ready', 'ok');
+                    });
+                }
 
                 // Dynamic hit-test approach (like video-ar.html)
-                if (!hitTestSource && !hitTestSourceRequested) {
+                if (xrRefSpace && !hitTestSource && !hitTestSourceRequested) {
                     hitTestSourceRequested = true;
                     session.requestReferenceSpace('viewer').then(viewerSpace => {
                         session.requestHitTestSource({ space: viewerSpace }).then(source => {
@@ -571,7 +569,7 @@
                 }
 
                 // Update reticle position
-                if (hitTestSource) {
+                if (hitTestSource && xrRefSpace) {
                     const results = frame.getHitTestResults(hitTestSource);
                     if (results.length > 0) {
                         const hit = results[0];
