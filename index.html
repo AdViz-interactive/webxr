@@ -23,6 +23,10 @@
             box-sizing: border-box;
         }
 
+        html {
+            background-color: var(--bg);
+        }
+
         body {
             font-family: 'Outfit', sans-serif;
             background-color: var(--bg);
@@ -32,6 +36,13 @@
             display: flex;
             align-items: center;
             justify-content: center;
+        }
+
+        /* AR mode - make EVERYTHING transparent */
+        html.ar-mode,
+        html.ar-mode body {
+            background: transparent !important;
+            background-color: transparent !important;
         }
 
         .ui-overlay {
@@ -378,8 +389,8 @@
             // Listen for session start
             renderer.xr.addEventListener('sessionstart', async () => {
                 addDebug('✓ AR session started', 'ok');
-                document.body.style.backgroundColor = 'transparent';
-                document.body.style.background = 'none';
+                // Use CSS class for reliable transparency
+                document.documentElement.classList.add('ar-mode');
                 mainUI.style.display = 'none';
                 document.getElementById('ar-overlay').style.display = 'block';
                 arUI.style.display = 'flex';
@@ -497,9 +508,8 @@
         }
 
         function onSessionEnd() {
-            // Restore background color
-            document.body.style.backgroundColor = '';
-            document.body.style.background = '';
+            // Restore background color by removing ar-mode class
+            document.documentElement.classList.remove('ar-mode');
             document.getElementById('ar-overlay').style.display = 'none';
 
             renderer.setAnimationLoop(null);
