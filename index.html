@@ -488,16 +488,10 @@
             renderer.xr.setSession(xrSession);
             addDebug('✓ XR session set on renderer', 'ok');
 
+            // Get reference space for later use
             xrSession.requestReferenceSpace('local').then(space => {
                 xrRefSpace = space;
-                addDebug('✓ local ref space ready', 'ok');
-                xrSession.requestReferenceSpace('viewer').then(vSpace => {
-                    addDebug('✓ viewer ref space ready', 'ok');
-                    xrSession.requestHitTestSource({ space: vSpace }).then(source => {
-                        hitTestSource = source;
-                        addDebug('✓ hit test source ready', 'ok');
-                    });
-                });
+                addDebug('✓ Reference space ready', 'ok');
             });
 
             renderer.setAnimationLoop(render);
@@ -568,11 +562,14 @@
                 hitTestSource.cancel();
                 hitTestSource = null;
             }
+            hitTestSourceRequested = false;
             xrSession = null;
             setStatus('Active', 'info');
         }
 
         let renderCount = 0;
+        let hitTestSourceRequested = false;
+
         function render(timestamp, frame) {
             renderCount++;
             if (renderCount === 1) {
@@ -582,17 +579,36 @@
                 addDebug(`60 frames rendered OK`, 'ok');
             }
 
-            if (frame && hitTestSource && xrRefSpace) {
-                const results = frame.getHitTestResults(hitTestSource);
-                if (results.length > 0) {
-                    const hit = results[0];
-                    const pose = hit.getPose(xrRefSpace);
-                    reticle.visible = true;
-                    reticle.matrix.fromArray(pose.transform.matrix);
-                } else {
-                    reticle.visible = false;
+            if (frame && xrRefSpace) {
+                const session = renderer.xr.getSession();
+
+                // Dynamic hit-test approach (like video-ar.html)
+                if (!hitTestSource && !hitTestSourceRequested) {
+                    hitTestSourceRequested = true;
+                    session.requestReferenceSpace('viewer').then(viewerSpace => {
+                        session.requestHitTestSource({ space: viewerSpace }).then(source => {
+                            hitTestSource = source;
+                            addDebug('✓ Hit test source ready', 'ok');
+                        }).catch(err => {
+                            addDebug('Hit test failed: ' + err.message, 'error');
+                        });
+                    });
+                }
+
+                // Update reticle position
+                if (hitTestSource) {
+                    const results = frame.getHitTestResults(hitTestSource);
+                    if (results.length > 0) {
+                        const hit = results[0];
+                        const pose = hit.getPose(xrRefSpace);
+                        reticle.visible = true;
+                        reticle.matrix.fromArray(pose.transform.matrix);
+                    } else {
+                        reticle.visible = false;
+                    }
                 }
             }
+
             renderer.render(scene, camera);
         }
 
