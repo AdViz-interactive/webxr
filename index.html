@@ -442,6 +442,9 @@
 
             // Mode toggle button
             elModeBtn.addEventListener('click', () => {
+                addDebug('Mode btn clicked. selectedModel: ' + (selectedModel ? 'YES' : 'NO'), 'ok');
+                addDebug('placedModels count: ' + placedModels.length, 'ok');
+
                 if (currentMode === 'place') {
                     currentMode = 'edit';
                     elModeBtn.textContent = '✏️ Edit';
@@ -599,7 +602,10 @@
         function placeModel() {
             // Only place in place mode
             if (currentMode !== 'place') return;
-            if (!modelTemplate || !reticle.visible) return;
+            if (!modelTemplate || !reticle.visible) {
+                addDebug('Cannot place: no model or reticle', 'error');
+                return;
+            }
 
             const clone = modelTemplate.clone();
             clone.position.setFromMatrixPosition(reticle.matrix);
@@ -615,7 +621,7 @@
             elScaleSlider.value = 100;
             elScaleValue.textContent = '1.0x';
 
-            addDebug('Model placed! Switch to Edit to resize', 'ok');
+            addDebug('✓ Model placed! selectedModel set. Count: ' + placedModels.length, 'ok');
         }
 
         // Use 'select' event for tap placement
