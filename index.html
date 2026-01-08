@@ -456,6 +456,13 @@
                     // Always show edit panel in edit mode
                     elEditPanel.style.display = 'flex';
 
+                    // Fallback: if no selectedModel but we have placed models, select the last one
+                    if (!selectedModel && placedModels.length > 0) {
+                        selectedModel = placedModels[placedModels.length - 1];
+                        baseScale = selectedModel.scale.x;
+                        addDebug('Auto-selected last model', 'ok');
+                    }
+
                     if (selectedModel) {
                         // Show controls, hide warning
                         elNoModelMsg.style.display = 'none';
