@@ -279,12 +279,18 @@
 
     <!-- Edit Panel with Sliders -->
     <div id="edit-panel">
-        <div class="slider-row">
+        <div style="text-align: center; font-weight: bold; margin-bottom: 8px; color: #fff;">
+            ✏️ Edit Model
+        </div>
+        <div id="no-model-msg" style="text-align: center; color: #f87171; font-size: 12px; display: none;">
+            ⚠️ Place a model first!
+        </div>
+        <div class="slider-row" id="scale-controls">
             <span class="slider-label">Scale</span>
             <input type="range" id="scaleSlider" min="10" max="500" value="100">
             <span class="slider-value" id="scaleValue">1.0x</span>
         </div>
-        <div class="slider-row">
+        <div class="slider-row" id="rotate-controls">
             <span class="slider-label">Rotate</span>
             <div class="rotate-buttons">
                 <button class="rotate-btn" id="rotateLeft">↺ -15°</button>
@@ -327,6 +333,9 @@
         const elRotateRight = document.getElementById('rotateRight');
         const elModeIndicator = document.getElementById('mode-indicator');
         const elModeBtn = document.getElementById('modeBtn');
+        const elNoModelMsg = document.getElementById('no-model-msg');
+        const elScaleControls = document.getElementById('scale-controls');
+        const elRotateControls = document.getElementById('rotate-controls');
 
         const elSetup = document.getElementById('setup-panel');
         const elStatus = document.getElementById('status-msg');
@@ -440,15 +449,27 @@
                     elModeIndicator.textContent = 'MODE: EDIT';
                     elModeIndicator.classList.add('edit');
                     reticle.visible = false;
-                    // Show edit panel if there's a model to edit
+
+                    // Always show edit panel in edit mode
+                    elEditPanel.style.display = 'flex';
+
                     if (selectedModel) {
-                        elEditPanel.style.display = 'flex';
+                        // Show controls, hide warning
+                        elNoModelMsg.style.display = 'none';
+                        elScaleControls.style.display = 'flex';
+                        elRotateControls.style.display = 'flex';
                         // Reset slider to current scale
                         const currentScale = selectedModel.scale.x / baseScale;
                         elScaleSlider.value = currentScale * 100;
                         elScaleValue.textContent = currentScale.toFixed(1) + 'x';
+                        addDebug('Editing model...', 'ok');
+                    } else {
+                        // Show warning, hide controls
+                        elNoModelMsg.style.display = 'block';
+                        elScaleControls.style.display = 'none';
+                        elRotateControls.style.display = 'none';
+                        addDebug('No model to edit! Place one first.', 'error');
                     }
-                    addDebug('Switched to EDIT mode', 'ok');
                 } else {
                     currentMode = 'place';
                     elModeBtn.textContent = '📍 Place';
