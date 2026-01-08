@@ -607,10 +607,21 @@
         }
 
         function placeModel() {
+            addDebug('placeModel() called!', 'ok');
+
             // Only place in place mode
-            if (currentMode !== 'place') return;
-            if (!modelTemplate || !reticle.visible) {
-                addDebug('Cannot place: no model or reticle', 'error');
+            if (currentMode !== 'place') {
+                addDebug('Not in place mode, skipping', 'error');
+                return;
+            }
+
+            if (!modelTemplate) {
+                addDebug('No modelTemplate loaded!', 'error');
+                return;
+            }
+
+            if (!reticle.visible) {
+                addDebug('Reticle not visible!', 'error');
                 return;
             }
 
@@ -628,7 +639,7 @@
             elScaleSlider.value = 100;
             elScaleValue.textContent = '1.0x';
 
-            addDebug('✓ Model placed! selectedModel set. Count: ' + placedModels.length, 'ok');
+            addDebug('✓ PLACED! Count=' + placedModels.length + ' hasSelected=' + (selectedModel ? 'Y' : 'N'), 'ok');
         }
 
         // Use 'select' event for tap placement
@@ -656,5 +667,5 @@
     </script>
 </body>
 
-    
+
 </html>
