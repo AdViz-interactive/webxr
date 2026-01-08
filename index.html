@@ -495,8 +495,12 @@
             elScaleSlider.addEventListener('input', (e) => {
                 if (!selectedModel) return;
                 const scaleMultiplier = e.target.value / 100;
-                selectedModel.scale.setScalar(baseScale * scaleMultiplier);
+                const newScale = baseScale * scaleMultiplier;
+                selectedModel.scale.setScalar(newScale);
+                selectedModel.updateMatrixWorld(true);
                 elScaleValue.textContent = scaleMultiplier.toFixed(1) + 'x';
+                // Only log every few steps to avoid log spam
+                if (Math.random() < 0.1) console.log('Scaling to:', newScale);
             });
 
             // Rotate buttons
@@ -591,16 +595,8 @@
                     reticle.visible = false;
                 }
 
-                // Handle tap to place
-                const inputSources = session.inputSources;
-                for (const source of inputSources) {
-                    if (source.gamepad) {
-                        const btn = source.gamepad.buttons[0];
-                        if (btn && btn.pressed && reticle.visible && modelTemplate) {
-                            placeModel();
-                        }
-                    }
-                }
+                // Removed per-frame placement logic to prevent multiple models overlapping
+                // Placement is now handled solely by the 'select' event listener
             }
 
             renderer.render(scene, camera);
